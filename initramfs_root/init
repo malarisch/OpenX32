@@ -15,13 +15,24 @@ mkdir -p /dev/pts
 # set hostname
 hostname -F /etc/hostname
 
+# syslog into a 128 KiB RAM ring buffer (ptp4l logs there); read with "logread -f"
+syslogd -C128
+
 # read mac-address from SD-card and set it
 /openx32/x32sdconfig
 
 # bring networkdevices up
 ip link set lo up
 ip link set eth0 up
-udhcpc -i eth0 -b
+# The PHY link comes up only a few seconds after this point. With the busybox
+# defaults (3 tries, then 20 s pause) the lease arrived ~30 s after boot;
+# retry quicker instead.
+udhcpc -i eth0 -b -t 10 -T 2 -A 5
+
+# AES67 (FPGA core on the control bus, SPI3 chip-select 0, spibone driver):
+# "/etc/init.d/aes67 start" once OMC has loaded the gateware and set the bus
+# online, "/etc/init.d/aes67 stop" before the FPGA is reconfigured. Not started
+# here: OMC loads the bitstream later.
 
 # start user-shells
 # =============================
