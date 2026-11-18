@@ -53,7 +53,14 @@ RUN dpkg --add-architecture armel \
             cpio \
             dropbear-bin \
             zlib1g-dev:armel libz-dev:armel libudev-dev:armel \
+            python3 \
+            curl \
+            ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+# Rust for the AES67 control plane (ARMv5TE targets for musl and glibc)
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path \
+  && rustup target add armv5te-unknown-linux-musleabi armv5te-unknown-linux-gnueabi
 DOCKERFILE
 
 DOCKER_CONFIG="${DOCKER_CONFIG_DIR}" DOCKER_HOST="${DOCKER_HOST_URI}" \
@@ -74,7 +81,7 @@ tar -xf toolchains/cross-arm-arm926ej.tar.xz -C ${BUILD_DIR}/
 
 # download, compile and install libz into ${BUILD_DIR}/opt/cross
 cd /tmp
-wget https://zlib.net/zlib-1.3.2.tar.gz
+wget https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
 tar -xf zlib-1.3.2.tar.gz
 rm zlib-1.3.2.tar.gz
 cd zlib-1.3.2
@@ -90,6 +97,8 @@ make install
 
 # build with musl
 export PATH=${BUILD_DIR}/opt/cross/bin:$PATH
+# the container runs as the calling user: keep the cargo registry cache writable
+export CARGO_HOME=${BUILD_DIR}/cargo-home
 
 cd ${ROOT_DIR}
 

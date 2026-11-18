@@ -73,6 +73,7 @@ COMPILE_LINUX=true
 COMPILE_BUSYBOX=true
 COMPILE_SOFTWARE=true
 COMPILE_MUSL=true
+COMPILE_AES67=true
 USE_LZMA=false
 USE_ENCRYPTION=false
 CREATE_SSHKEY=false
@@ -98,6 +99,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --glibc)
       COMPILE_MUSL=false
+      shift
+      ;;
+    --skip-aes67)
+      COMPILE_AES67=false
       shift
       ;;
     --lzma)
@@ -209,6 +214,12 @@ fi
 if [ "$COMPILE_LINUX" = true ]; then
 	update_progress 20 "Compile Linux..."
 	cd ../linux
+	# FPGA control bus: copy the spibone bus driver (OpenAudioFPGA) into the kernel tree
+	../files/spibone/build.sh
+	# AES67: copy the aes67_eth driver (netdev + PTP clock, a spibone client) into the kernel tree
+	if [ "$COMPILE_AES67" = true ]; then
+		../files/aes67/build.sh kernel
+	fi
 	ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- make -j$(nproc) zImage
 	ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- make -j$(nproc) dtbs
 	mkimage -A ARM -O linux -T kernel -C none -a 0x80060000 -e 0x80060000 -n "Linux kernel (OpenX32)" -d arch/arm/boot/zImage /tmp/uImage
@@ -343,6 +354,11 @@ if [ "$COMPILE_SOFTWARE" = true ]; then
         make -j$(nproc)
         cd ../..
 
+	if [ "$COMPILE_AES67" = true ]; then
+		update_progress 65 "Compile AES67 (LinuxPTP + Rust control plane)..."
+		COMPILE_MUSL=$COMPILE_MUSL ../files/aes67/build.sh userspace
+	fi
+
 	# exit software-directory
 	cd ..
 fi
@@ -358,7 +374,13 @@ cd initramfs_root/openx32/ && ln -sf dropbearmulti dbclient && cd ../../
 cd initramfs_root/openx32/ && ln -sf dropbearmulti dropbearconvert && cd ../../
 cd initramfs_root/openx32/ && ln -sf dropbearmulti dropbearkey && cd ../../
 cd initramfs_root/openx32/ && ln -sf dropbearmulti scp && cd ../../
+# scp must be in the default PATH of dropbear sessions for "scp -O" (no sftp-server on the X32)
+ln -sf ../openx32/dropbearmulti initramfs_root/bin/scp
 cp software/framebuffer-vncserver/build/framebuffer-vncserver initramfs_root/openx32/
+if [ "$COMPILE_AES67" = true ]; then
+	# aes67d, aes67cfg, aes67web, ptp4l, pmc, phc_ctl + /etc/aes67/csr.csv
+	COMPILE_MUSL=$COMPILE_MUSL files/aes67/build.sh install
+fi
 
 # copy general libraries
 cp software/libvncserver/build/libvncserver.so.1 initramfs_root/lib/libvncserver.so.1
@@ -447,10 +469,10 @@ dd if=u-boot/u-boot.bin of=/tmp/openx32.bin bs=8 seek=$((0x18)) conv=notrunc
 # Linux-Kernel at offset 0x060000 (384 kiB for Miniloader + U-Boot): will be started by U-Boot
 update_progress 87 "Merge binary-files...Linux-Kernel -> openx32.bin"
 dd if=/tmp/uImage of=/tmp/openx32.bin bs=512 seek=$((0x300)) conv=notrunc
-# DeviceTreeBlob at offset 0x300000 (~3 MiB for Kernel)
+# DeviceTreeBlob at offset 0x330000 (0x2D0000 = 2880 kiB for the uImage)
 update_progress 88 "Merge binary-files...DeviceTreeBlob -> openx32.bin"
 dd if=linux/arch/arm/boot/dts/nxp/imx/imx25-pdk.dtb of=/tmp/openx32.bin bs=512 seek=$((0x1980)) conv=notrunc
-# InitramFS at offset 0x310000 (~64kiB for DeviceTreeBlob)
+# InitramFS at offset 0x340000 (64 kiB for DeviceTreeBlob)
 update_progress 89 "Merge binary-files...InitramFS -> openx32.bin"
 dd if=/tmp/uramdisk.bin of=/tmp/openx32.bin bs=512 seek=$((0x1A00)) conv=notrunc
 update_progress 90 "Merge binary-files...Finalize openx32.bin"

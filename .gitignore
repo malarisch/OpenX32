@@ -17,8 +17,8 @@ software/framebuffer-vncserver/
 software/libvncserver/
 software/libartnet/
 software/omc/
-fpga/AES50/
-fpga/ethernet_mac/
+software/aes67/
+software/linuxptp/
 software/x32ctrl/lv_port_linux/
 
 
@@ -34,6 +34,7 @@ initramfs_root/openx32
 initramfs_root/etc/dropbear/openx32_key
 initramfs_root/etc/dropbear/openx32_key.pub
 initramfs_root/etc/motd
+initramfs_root/etc/aes67/csr.csv
 
 # compiled software
 software/x32ctrl/.vscode/tasks.json

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# AES67 FPGA Ethernet + PHC driver (sources from the AES67 project,
+# driver/aes67_eth). Copied into drivers/net/ethernet/aes67/ by
+# files/aes67/build.sh during the OpenX32 build.
+
+config AES67_ETH
+	tristate "AES67 FPGA Ethernet + PTP hardware clock (spibone client)"
+	depends on SPIBONE && OF && NET
+	depends on PTP_1588_CLOCK
+	help
+	  Network device and PTP hardware clock for the AES67 FPGA core,
+	  a client of the LiteX SPIBone bus (CONFIG_SPIBONE): a child node
+	  "aes67,eth" of the spibone DT node. Provides a netdev with hardware
+	  timestamps (for ptp4l) and a PHC (/dev/ptpN, "aes67_wallclock");
+	  the aes67d daemon reaches the registers through /dev/spibone0.

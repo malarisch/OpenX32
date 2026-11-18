@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# In-tree build of the AES67 driver. Replaces the out-of-tree Kbuild from the
+# AES67 project (which only supports obj-m). The object name keeps the module
+# parameters under /sys/module/aes67_eth_drv/parameters/.
+# spibone.h: the client API of the spibone bus driver (drivers/misc/spibone).
+ccflags-y += -I$(srctree)/drivers/misc/spibone
+obj-$(CONFIG_AES67_ETH) += aes67_eth_drv.o
+aes67_eth_drv-y := aes67_eth.o aes67_bus.o aes67_phc.o

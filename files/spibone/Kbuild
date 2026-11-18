@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# In-tree build of the LiteX SPIBone bus driver.
+obj-$(CONFIG_SPIBONE) += spibone.o

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# LiteX SPIBone bus driver (sources from OpenAudioFPGA, driver/spibone).
+# Copied into drivers/misc/spibone/ by files/spibone/build.sh during the OpenX32 build.
+
+config SPIBONE
+	tristate "LiteX SPIBone (SPI -> Wishbone) bus"
+	depends on SPI && OF
+	help
+	  Owns the SPI device of a LiteX SPIBone bridge (OpenAudioFPGA control
+	  bus) and is the only Wishbone master on it: /dev/spiboneN for
+	  userspace (register access, FPGA configuration over the same link)
+	  and client devices from the child nodes of its DT node (e.g. the
+	  AES67 core, CONFIG_AES67_ETH).

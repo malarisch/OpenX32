@@ -1,0 +1,190 @@
+#!/bin/sh
+# AES67 stack for OpenX32: aes67_eth driver, ptp4l, aes67d and aes67web.
+#
+#   /etc/init.d/aes67 {start|stop|restart|status}
+#
+# The FPGA control bus (SPI3 chip-select 0, LiteX SPIBone) belongs to the
+# spibone kernel driver. OMC configures the FPGA through it and then sets the bus
+# online; that creates the AES67 core as a client device, and the aes67_eth
+# driver binds it if the gateware has the core (netdev + PTP hardware clock).
+# Before a reconfiguration the bus removes the client again (the netdev goes
+# away), so stop this stack first. Bus state: /sys/bus/spi/devices/spi2.0/state.
+#
+# Defaults below can be overridden in /etc/aes67/aes67.conf (shell syntax).
+
+BUS_DEV=spi2.0                 # spibone bus: CSPI3 = Linux SPI bus 2, chip-select 0
+SPI_HZ=                        # SPI clock request in Hz for the bus; empty = DT default
+                               # (8 MHz). The i.MX25 CSPI divides 66.5 MHz by powers of two
+                               # and rounds down: 8 MHz -> 4.16 MHz SCLK. The next step
+                               # (8.3 MHz, request >= 8.32 MHz) shifts every read by one bit:
+                               # spibone (50 MHz, 4x oversampled) drives MISO too late. At
+                               # 1 MHz (-> 520 kHz) ptp4l misses its 50 ms TX-timestamp deadline.
+SPI_POLL_US=                   # spi-imx polling_limit_us; empty = kernel default (30 us).
+                               # Larger values make aes67_eth TX faster (no sleep on the SPI
+                               # IRQ), but the parameter applies to ALL i.MX SPI buses, and
+                               # 3000 breaks omc's communication with the DSPs (CSPI1): they
+                               # no longer start on the next omc restart. Leave it empty.
+POLL_MS=                       # RX poll interval; empty = driver default
+MACADDR=                       # MAC address of the AES67 interface; empty = derived from the
+                               # MAC of $MAC_FROM (same address with the "locally administered"
+                               # bit set). The FPGA has no MAC of its own: without this the
+                               # driver picks a random one on every start, and the DHCP server
+                               # hands out a new address each time.
+MAC_FROM=eth0                  # interface the MAC is derived from
+DHCP=1                         # 1 = run udhcpc on the AES67 interface
+IPADDR=                        # static address instead, e.g. 192.168.1.42/24 (DHCP=0)
+WEB_LISTEN=0.0.0.0:8080        # aes67web dashboard; empty = do not start it
+CSR=/etc/aes67/csr.csv
+PTP4L_CONF=/etc/aes67/ptp4l.conf
+AES67D_CONF=/etc/aes67d.json   # daemon settings + persisted FPGA config
+BIN=/openx32
+RUN=/var/run/aes67
+
+[ -f /etc/aes67/aes67.conf ] && . /etc/aes67/aes67.conf
+
+BUS=/sys/bus/spi/devices/$BUS_DEV
+DRV=/sys/bus/platform/drivers/aes67_eth
+PARAMS=/sys/module/aes67_eth_drv/parameters
+
+# netdev of the AES67 core (bound client device of the bus)
+aes67_iface() {
+	for n in $DRV/*/net/*; do
+		[ -e "$n" ] && { basename "$n"; return; }
+	done
+}
+
+# MAC for the AES67 interface: $MACADDR, or the MAC of $MAC_FROM as a locally
+# administered unicast address (first byte: bit 1 set, bit 0 cleared), e.g.
+# 00:15:64:0a:f9:54 -> 02:15:64:0a:f9:54. Prints nothing if neither is there.
+aes67_mac() {
+	if [ -n "$MACADDR" ]; then
+		echo "$MACADDR"
+		return
+	fi
+	sys=$(cat /sys/class/net/$MAC_FROM/address 2>/dev/null)
+	case "$sys" in
+		??:??:??:??:??:??) ;;
+		*) return ;;
+	esac
+	[ "$sys" = 00:00:00:00:00:00 ] && return
+	printf '%02x:%s\n' $(( (0x${sys%%:*} | 2) & 0xfe )) "${sys#*:}"
+}
+
+# start_bg NAME LOGFILE CMD...: run CMD in the background, remember its PID
+start_bg() {
+	name=$1
+	log=$2
+	shift 2
+	"$@" >> "$log" 2>&1 &
+	echo $! > $RUN/$name.pid
+}
+
+stop_pid() {
+	if [ -f $RUN/$1.pid ]; then
+		kill "$(cat $RUN/$1.pid)" 2>/dev/null
+		rm -f $RUN/$1.pid
+	fi
+}
+
+running() {
+	[ -f $RUN/$1.pid ] && kill -0 "$(cat $RUN/$1.pid)" 2>/dev/null
+}
+
+start() {
+	if running aes67d; then
+		echo "aes67: already running"
+		return 0
+	fi
+	mkdir -p $RUN /run
+
+	if [ ! -d $DRV ] || [ ! -e $BUS/state ]; then
+		echo "aes67: kernel has no spibone / aes67_eth driver, or no bus $BUS_DEV" >&2
+		return 1
+	fi
+	[ -n "$SPI_HZ" ] && echo "$SPI_HZ" > /sys/module/spibone/parameters/spi_hz
+	[ -n "$SPI_POLL_US" ] && echo "$SPI_POLL_US" > /sys/module/spi_imx/parameters/polling_limit_us
+	[ -n "$POLL_MS" ] && echo "$POLL_MS" > $PARAMS/poll_ms
+
+	# The client device exists once OMC has configured the FPGA and set the bus
+	# online; give the driver a moment to probe.
+	i=0
+	while [ $i -lt 10 ] && [ -z "$(aes67_iface)" ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	IFACE=$(aes67_iface)
+	if [ -z "$IFACE" ]; then
+		echo "aes67: no AES67 network interface (bus $BUS_DEV: $(cat $BUS/state); without AES67 core in the gateware the driver does not bind)" >&2
+		return 1
+	fi
+	MAC=$(aes67_mac)
+	if [ -n "$MAC" ]; then
+		ip link set dev "$IFACE" address "$MAC" || echo "aes67: could not set MAC $MAC" >&2
+	else
+		echo "aes67: no MAC to derive from ($MAC_FROM), $IFACE keeps a random one" >&2
+	fi
+	ip link set "$IFACE" up
+	echo "aes67: $IFACE up ($(cat /sys/class/net/$IFACE/address))"
+
+	if [ -n "$IPADDR" ]; then
+		ip addr add "$IPADDR" dev "$IFACE"
+	elif [ "$DHCP" = 1 ]; then
+		udhcpc -i "$IFACE" -b -S -p $RUN/udhcpc.pid > /dev/null 2>&1
+	fi
+
+	# PTP over UDP/IPv4 needs a source address: wait up to 15 s for one.
+	i=0
+	while [ $i -lt 15 ] && ! ip -4 addr show dev "$IFACE" | grep -q inet; do
+		sleep 1
+		i=$((i + 1))
+	done
+
+	# ptp4l disciplines the FPGA wallclock through the aes67_eth PHC.
+	# It logs to syslog; query it with: pmc -u -b 0 'GET CURRENT_DATA_SET'
+	start_bg ptp4l /dev/null $BIN/ptp4l -f $PTP4L_CONF -i "$IFACE"
+
+	start_bg aes67d $RUN/aes67d.log \
+		$BIN/aes67d --kernel /dev/spibone0 --iface "$IFACE" \
+			--csr $CSR --config $AES67D_CONF
+
+	if [ -n "$WEB_LISTEN" ]; then
+		start_bg aes67web $RUN/aes67web.log $BIN/aes67web --listen "$WEB_LISTEN"
+	fi
+}
+
+stop() {
+	stop_pid aes67web
+	stop_pid aes67d
+	stop_pid ptp4l
+	stop_pid udhcpc
+
+	IFACE=$(aes67_iface)
+	if [ -n "$IFACE" ]; then
+		ip addr flush dev "$IFACE"
+		ip link set "$IFACE" down
+	fi
+	echo "aes67: stopped"
+}
+
+status() {
+	echo "bus $BUS_DEV: $(cat $BUS/state 2>/dev/null)"
+	echo "interface: $(aes67_iface)"
+	for p in ptp4l aes67d aes67web udhcpc; do
+		if running $p; then
+			echo "$p: running"
+		else
+			echo "$p: stopped"
+		fi
+	done
+}
+
+case "$1" in
+	start) start ;;
+	stop) stop ;;
+	restart) stop; start ;;
+	status) status ;;
+	*)
+		echo "usage: $0 {start|stop|restart|status}" >&2
+		exit 2
+		;;
+esac
