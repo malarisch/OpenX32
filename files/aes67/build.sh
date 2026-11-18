@@ -16,7 +16,7 @@
 #   files/aes67/build.sh install     copy binaries and config into initramfs_root
 #
 # Environment:
-#   AES67_DIR     AES67 project checkout     (default: software/aes67)
+#   AES67_DIR     AES67 project checkout     (default: fpga/ext/AES67)
 #   LINUXPTP_DIR  LinuxPTP checkout          (default: software/linuxptp)
 #   AES67_CSR     csr.csv of the AES67 gateware loaded on the X32
 #                 (default: the bridge build of AES67_DIR, the map the gateware was
@@ -30,7 +30,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-AES67_DIR="${AES67_DIR:-$ROOT/software/aes67}"
+AES67_DIR="${AES67_DIR:-$ROOT/fpga/ext/AES67}"
 LINUXPTP_DIR="${LINUXPTP_DIR:-$ROOT/software/linuxptp}"
 AES67_CSR_BUILD="$AES67_DIR/litex_soc/build/aes67_bridge_lattice/csr.csv"
 AES67_CSR_SNAPSHOT="$ROOT/files/aes67/csr.csv"

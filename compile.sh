@@ -28,22 +28,33 @@ echo "                                  .-+%%%%%%#***=-.                        
 echo ""
 echo "Compiling OpenX32 Operating System for the Behringer X32 Audio-Mixing Console"
 
+NOTERM=false
+for arg in "$@"; do
+	[ "$arg" = "--noterm" ] && NOTERM=true
+done
+if [ ! -t 1 ] || ! tput lines >/dev/null 2>&1; then
+	NOTERM=true
+fi
+
 cleanup() {
     tput csr 0 $(($(tput lines) - 1)) # reset scroll-region
     tput rc                          # restore cursor
     echo -e "\nScript beendet."
     exit
 }
-trap cleanup SIGINT SIGTERM
 
-# get terminal-infos
-LINES=$(tput lines)
-COLUMNS=$(tput cols)
-DATA_LINES=$((LINES - 2)) # leave two lines for status-information
+if [ "$NOTERM" = false ]; then
+	trap cleanup SIGINT SIGTERM
 
-# define scroll-Region (row 0 to DATA_LINES)
-tput csr 0 $DATA_LINES
-clear
+	# get terminal-infos
+	LINES=$(tput lines)
+	COLUMNS=$(tput cols)
+	DATA_LINES=$((LINES - 2)) # leave two lines for status-information
+
+	# define scroll-Region (row 0 to DATA_LINES)
+	tput csr 0 $DATA_LINES
+	clear
+fi
 
 update_progress()
 {
@@ -52,6 +63,7 @@ update_progress()
 
 	# Text for log itself, to recognize the sections afterwards
 	echo "################ $Text #################"
+	[ "$NOTERM" = true ] && return
 
     # save cursor-Position
     tput sc
@@ -111,6 +123,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --encrypted)
       USE_ENCRYPTION=true
+      shift
+      ;;
+    --noterm)
       shift
       ;;
     --create-sshkey)
@@ -510,6 +525,8 @@ echo "The image with Miniloader, u-Boot, Linux Kernel, Ramdisk and DeviceTreeBlo
 
 
 # Am Ende die Scroll-Region wieder freigeben
-tput csr 0 $((LINES - 1))
-tput cup $LINES 0
-echo ""
+if [ "$NOTERM" = false ]; then
+	tput csr 0 $((LINES - 1))
+	tput cup $LINES 0
+	echo ""
+fi

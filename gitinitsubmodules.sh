@@ -27,12 +27,13 @@ git clone https://github.com/hbock/pyatk.git software/pyatk
 git -C software/pyatk checkout bd124dbbc2efac94e5b69caffe50e31fee402b78
 
 # OpenAudioFPGA (submodule fpga/): FPGA gateware and the spibone kernel driver
-# (FPGA control bus, files/spibone/build.sh). Not recursive: its own submodules
-# (AES50 core, AES67 core) are only needed to build the gateware, see fpga/README.md
+# (FPGA control bus, files/spibone/build.sh)
 git submodule update --init fpga
 
-# AES67: kernel driver + Rust control plane (aes67d/aes67cfg/aes67web), and LinuxPTP (ptp4l)
-git clone --depth 1 --single-branch https://github.com/malarisch/AES67.git software/aes67
+# AES67 (submodule of OpenAudioFPGA): kernel driver + Rust control plane (aes67d/aes67cfg/aes67web)
+git -C fpga submodule update --init ext/AES67
+
+# LinuxPTP (ptp4l)
 git clone --depth 1 --single-branch --branch v4.4 https://github.com/richardcochran/linuxptp.git software/linuxptp
 
 echo "Done."

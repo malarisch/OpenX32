@@ -102,6 +102,6 @@ export CARGO_HOME=${BUILD_DIR}/cargo-home
 
 cd ${ROOT_DIR}
 
-./compile-noterm.sh
+./compile.sh --noterm
 
 BUILD
