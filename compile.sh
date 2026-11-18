@@ -202,7 +202,10 @@ cp files/libartnet_network.c software/libartnet/artnet/network.c
 # custom boot logo - fullscreen -> console has only 1 line!
 # cp files/linux-boot-logo_final.ppm linux/drivers/video/logo/logo_linux_clut224.ppm
 
-
+# LiteX components of the gateware (OpenAudioFPGA): the register maps, e.g. the
+# csr.csv of the AES67 core for the aes67_eth driver
+update_progress 2 "Generate LiteX components..."
+fpga/build.sh litex || exit 1
 
 
 export COPTS="-mcpu=arm926ej-s -Os -fno-caller-saves -pipe -funit-at-a-time -msoft-float -fno-plt -fno-unwind-tables -fno-asynchronous-unwind-tables"

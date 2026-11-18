@@ -18,11 +18,8 @@
 # Environment:
 #   AES67_DIR     AES67 project checkout     (default: fpga/ext/AES67)
 #   LINUXPTP_DIR  LinuxPTP checkout          (default: software/linuxptp)
-#   AES67_CSR     csr.csv of the AES67 gateware loaded on the X32
-#                 (default: the bridge build of AES67_DIR, the map the gateware was
-#                 built with: litex_soc/build/aes67_bridge_lattice/csr.csv; only if
-#                 that does not exist (fresh checkout, build/ is not in git) the
-#                 snapshot files/aes67/csr.csv, which may be stale)
+#   AES67_CSR     csr.csv of the AES67 gateware loaded on the X32 (default: the
+#                 bridge build of AES67_DIR, litex_soc/build/aes67_bridge_lattice/csr.csv)
 #   LINUX_DIR     kernel tree                (default: linux)
 #   COMPILE_MUSL  true = musl toolchain from /opt/cross (default), false = glibc
 #   COPTS         C compiler flags for the target (set by compile.sh)
@@ -32,15 +29,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AES67_DIR="${AES67_DIR:-$ROOT/fpga/ext/AES67}"
 LINUXPTP_DIR="${LINUXPTP_DIR:-$ROOT/software/linuxptp}"
-AES67_CSR_BUILD="$AES67_DIR/litex_soc/build/aes67_bridge_lattice/csr.csv"
-AES67_CSR_SNAPSHOT="$ROOT/files/aes67/csr.csv"
-if [ -z "${AES67_CSR:-}" ]; then
-	if [ -f "$AES67_CSR_BUILD" ]; then
-		AES67_CSR="$AES67_CSR_BUILD"
-	else
-		AES67_CSR="$AES67_CSR_SNAPSHOT"
-	fi
-fi
+AES67_CSR="${AES67_CSR:-$AES67_DIR/litex_soc/build/aes67_bridge_lattice/csr.csv}"
 LINUX_DIR="${LINUX_DIR:-$ROOT/linux}"
 COMPILE_MUSL="${COMPILE_MUSL:-true}"
 COPTS="${COPTS:--mcpu=arm926ej-s -Os}"
@@ -71,13 +60,7 @@ copy_if_changed() {
 need_aes67() {
 	[ -d "$AES67_DIR/driver/aes67_eth" ] && [ -d "$AES67_DIR/config_tool" ] ||
 		die "AES67 sources not found in $AES67_DIR (run gitinitsubmodules.sh or set AES67_DIR)"
-	[ -f "$AES67_CSR" ] || die "csr.csv not found: $AES67_CSR"
-	if [ "$AES67_CSR" = "$AES67_CSR_SNAPSHOT" ]; then
-		echo "aes67: WARNING: no AES67 bridge build ($AES67_CSR_BUILD)," >&2
-		echo "aes67: WARNING: using the snapshot $AES67_CSR_SNAPSHOT — if it does not match the" >&2
-		echo "aes67: WARNING: gateware, aes67_eth fails to probe (CSR map mismatch)" >&2
-	fi
-	echo "aes67: CSR map $AES67_CSR"
+	[ -f "$AES67_CSR" ] || die "csr.csv not found: $AES67_CSR (generate the AES67 bridge of the gateware, or set AES67_CSR)"
 }
 
 # --------------------------------------------------------------------------

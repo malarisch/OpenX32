@@ -54,6 +54,7 @@ RUN dpkg --add-architecture armel \
             dropbear-bin \
             zlib1g-dev:armel libz-dev:armel libudev-dev:armel \
             python3 \
+            python3-venv \
             curl \
             ca-certificates \
   && rm -rf /var/lib/apt/lists/*

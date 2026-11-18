@@ -64,3 +64,8 @@ cp files/meminit.txt software/pyatk/bin/
 python3 -m venv software/pyatk/pyatk_venv
 software/pyatk/pyatk_venv/bin/pip install pyserial pyusb==1.0.0 setuptools
 software/pyatk/pyatk_venv/bin/pip install ./software/pyatk
+
+# Python environment (LiteX) to generate the register maps of the FPGA gateware
+# (fpga/build.sh litex, called by compile.sh)
+# ==============================================================================
+fpga/litex_soc/setup_venv.sh
