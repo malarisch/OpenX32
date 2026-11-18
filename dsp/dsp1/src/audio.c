@@ -89,6 +89,22 @@ int delayLineTailOffsetOutput[MAX_CHAN_FPGA]; // offset = (delayMs * sampleRate 
 #pragma align 8
 float delayReadBuffer[MAX_CHAN_FPGA][SAMPLES_IN_BUFFER];
 
+// Copy between internal memory and the delay-lines in the external SDRAM.
+// This must NOT be vectorized: in SIMD mode an access to external memory only
+// transfers the PEx half. A SIMD copy (the compiler vectorizes an inlined memcpy
+// with -loop-simd) therefore writes only every second word into the SDRAM and
+// reads every word twice: out[2k+1] == out[2k] (sample-and-hold at fs/2) for an
+// even delay, stale data for an odd delay.
+#pragma inline
+static void sdramCopy(float* restrict dst, const float* restrict src, int count)
+{
+	#pragma no_vectorization
+	for (int i = 0; i < count; i++)
+	{
+		dst[i] = src[i];
+	}
+}
+
 
 #pragma align 8 // align for 2 floats
 float audioBuffer[5][1 + MAX_CHAN_FPGA + MAX_DSP2_FXRETURN + MAX_MIXBUS + MAX_DSP2_FXINSERT + MAX_MATRIX + MAX_MAIN + MAX_DSP2_AUX + MAX_MONITOR][SAMPLES_IN_BUFFER]; // audioBuffer[TAPPOINT][CHANNEL][SAMPLE]
@@ -379,12 +395,12 @@ void audioProcessData(void)
 		float* dst = &delayLineInput[i_ch][delayLineHeadInput];
 
 		if (wrapPoint >= SAMPLES_IN_BUFFER) {
-			// no warp-around -> use memcpy with burst-mode
-			memcpy(dst, src, SAMPLES_IN_BUFFER * sizeof(float));
+			// no warp-around -> one block
+			sdramCopy(dst, src, SAMPLES_IN_BUFFER);
 		} else {
 			// warp-around: use two burst-writes
-			memcpy(dst,                      src,            wrapPoint                       * sizeof(float));
-			memcpy(&delayLineInput[i_ch][0], src + wrapPoint,(SAMPLES_IN_BUFFER - wrapPoint) * sizeof(float));
+			sdramCopy(dst, src, wrapPoint);
+			sdramCopy(&delayLineInput[i_ch][0], src + wrapPoint, (SAMPLES_IN_BUFFER - wrapPoint));
 		}
 	}
 	// update head only once
@@ -405,12 +421,12 @@ void audioProcessData(void)
 		int readWrap = SAMPLES_IN_DELAYLINE - tail;
 
 		if (readWrap >= SAMPLES_IN_BUFFER) {
-			// no warp-around -> use memcpy with burst-mode
-			memcpy(dst, &delayLineInput[i_ch][tail], SAMPLES_IN_BUFFER * sizeof(float));
+			// no warp-around -> one block
+			sdramCopy(dst, &delayLineInput[i_ch][tail], SAMPLES_IN_BUFFER);
 		} else {
 			// warp-around: use two burst-reads
-			memcpy(dst,            &delayLineInput[i_ch][tail], readWrap                        * sizeof(float));
-			memcpy(dst + readWrap, &delayLineInput[i_ch][0],   (SAMPLES_IN_BUFFER - readWrap)  * sizeof(float));
+			sdramCopy(dst, &delayLineInput[i_ch][tail], readWrap);
+			sdramCopy(dst + readWrap, &delayLineInput[i_ch][0], (SAMPLES_IN_BUFFER - readWrap));
 		}
 	}
 #if DEBUG_COUNT_CYCLES_DETAIL
@@ -755,16 +771,17 @@ void audioProcessData(void)
 	START_CYCLE_COUNT(cycletemp_mb);
 	#endif
 
-	#pragma loop_count(48) // MAX_CHAN_FPGA + MAX_DSP2_FXRETURN
-	for (int i_ch = 0; i_ch < (MAX_CHAN_FPGA + MAX_DSP2_FXRETURN); i_ch++)
+	// clear the mixbus accumulators (not the channel signals: they are summed up below)
+	#pragma loop_count(ACTIVE_MIX_BUSSES)
+	for (int i_bus = 0; i_bus < ACTIVE_MIX_BUSSES; i_bus++)
 	{
-		float* restrict src = &audioBuffer[TAP_PRE_FADER][DSP_BUF_IDX_DSPCHANNEL + i_ch][0];
+		float* restrict acc = &audioBuffer[TAP_INPUT][DSP_BUF_IDX_MIXBUS + i_bus][0];
 		#pragma no_alias
 		#pragma vector_for
 		#pragma loop_count(SAMPLES_IN_BUFFER)
 		for (int s = 0; s < SAMPLES_IN_BUFFER; s++)
 		{
-			src[s] = 0;
+			acc[s] = 0;
 		}
 	}
 
@@ -1113,12 +1130,12 @@ void audioProcessData(void)
 		float* restrict dst = &delayLineOutput[i_ch][delayLineHeadOutput];
 
 		if (wrapPoint >= SAMPLES_IN_BUFFER) {
-			// no warp-around -> use memcpy with burst-mode
-			memcpy(dst, src, SAMPLES_IN_BUFFER * sizeof(float));
+			// no warp-around -> one block
+			sdramCopy(dst, src, SAMPLES_IN_BUFFER);
 		} else {
 			// warp-around: use two burst-writes
-			memcpy(dst,                       src,             wrapPoint                       * sizeof(float));
-			memcpy(&delayLineOutput[i_ch][0], src + wrapPoint, (SAMPLES_IN_BUFFER - wrapPoint) * sizeof(float));
+			sdramCopy(dst, src, wrapPoint);
+			sdramCopy(&delayLineOutput[i_ch][0], src + wrapPoint, (SAMPLES_IN_BUFFER - wrapPoint));
 		}
 	}
 	// update head only once
@@ -1135,12 +1152,12 @@ void audioProcessData(void)
 		int readWrap = SAMPLES_IN_DELAYLINE - tail;
 
 		if (readWrap >= SAMPLES_IN_BUFFER) {
-			// no warp-around -> use memcpy with burst-mode
-			memcpy(dst, src_base, SAMPLES_IN_BUFFER * sizeof(float));
+			// no warp-around -> one block
+			sdramCopy(dst, src_base, SAMPLES_IN_BUFFER);
 		} else {
 			// wrap-around: use two burst-reads
-			memcpy(dst,            src_base, readWrap                        * sizeof(float));
-			memcpy(dst + readWrap, &delayLineOutput[i_ch][0],   (SAMPLES_IN_BUFFER - readWrap)  * sizeof(float));
+			sdramCopy(dst, src_base, readWrap);
+			sdramCopy(dst + readWrap, &delayLineOutput[i_ch][0], (SAMPLES_IN_BUFFER - readWrap));
 		}
 	}
 
