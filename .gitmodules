@@ -21,3 +21,6 @@
 [submodule "pyatk"]
 	path = software/pyatk
 	ignore = dirty
+[submodule "fpga"]
+	path = fpga
+	url = https://github.com/malarisch/OpenAudioFPGA.git

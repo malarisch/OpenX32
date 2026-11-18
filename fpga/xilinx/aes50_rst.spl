@@ -1,6 +1,0 @@
-[Inputs]
-clk100_i
-start_i
-[Outputs]
-rst_o
-[BiDir]

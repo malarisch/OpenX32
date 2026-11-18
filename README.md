@@ -215,7 +215,15 @@ There are some test- and debug-softwares in the "test"-folder:
 
 ### Step 3: Compiling logic for the FPGA
 
-The X32 devices before 2020 are using a Xilinx Spartan-3A X3CS1400 FPGA to route the audio between the individual ADCs, DACs, expansion card and digital connectors like AES50 and UltraNet. For the Spartan-3A we can use the free version of Xilinx ISE 14.7 as the most recent toolchain to synthesize logic for this FPGA:
+The FPGA routes the audio between the ADCs, DACs, expansion card, DSPs and the digital connectors (AES50, UltraNet, AES67). Its logic is the separate project [OpenAudioFPGA](https://github.com/malarisch/OpenAudioFPGA), included here as the submodule `fpga/` (`git submodule update --init --recursive fpga` for everything needed to build the gateware). It contains both X32 variants, the gateware of the control bus and the `spibone` kernel driver that `compile.sh` builds into the kernel.
+
+Build the bit files with `./build.sh lattice | xilinx | all` inside `fpga/`; the toolchains, environment variables and the configuration of the AES50 and AES67 ports are described in [fpga/README.md](fpga/README.md):
+* X32 with Lattice ECP5 (since about 2020): Lattice Diamond 3.14
+* X32 with Xilinx Spartan-3A XC3S1400A (before 2020): Xilinx ISE 14.7
+
+Copy the bit file to an USB-thumbdrive and load it with the main-control-software, e.g. `./omc --L x32_lattice.bit` (Lattice) or `./omc --X x32_spartan.bit` (Xilinx).
+
+#### Installing Xilinx ISE 14.7
 
 Download ISE 14.7 from the Xilinx (AMD) website: https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive-ise.html. There are two options: a preinstalled linux virtual machine or the direct version. The virtual machine is working fine. If you want to use the direct version under Windows, here is a short manual as this needs some adjustments:
 
@@ -223,33 +231,6 @@ Download ISE 14.7 from the Xilinx (AMD) website: https://www.xilinx.com/support/
 2. Start the setup and install the software (the setup will take a loooong time). Between 93% and 95% the installation will hang: go into the taskmanager and kill the software "Webtalk32.exe" and "xwebtalk.exe" several times until the setup finishes (successfully!)
 3. Set the Windows-Environmental-Variable "XILINX_VC_CHECK_NOOP" to "1". Otherwise the software will complain about a non-installed VisualStudio Runtime 2008 even if it is installed correctly
 4. On modern Windows 10/11 ISE 14.7 will not start beyond the Splash-Screen due to the use of "SmartHeap" within the file "libPortability.dll". Download a hotfix from https://github.com/xn--nding-jua/OpenX32/raw/refs/heads/main/files/xilinx_ise_hotfix.zip, extract to C:\Xilinx\ and run the batch-file. The script will replace the 32-bit/64-bit versions of libPortability.dll.
-5. Start ISE 14.7, open the OpenX32 project and compile the logic of the main-schematic.
-6. On the left side of ISE 14.7 create a configuration file (bitstream)
-7. Copy main.bit to an USB-thumbdrive and load it either with "./fpgaconfig fpga.bit" or with the main-control-software "./omc --X fpga.bit" (Xillinx)
-
-An overview of the current FPGA-project can be found in the PDF-file of the top-schematic here: [View Schematic as PDF](https://github.com/xn--nding-jua/OpenX32/raw/refs/heads/main/Documentation/FPGA.pdf).
-
-#### Sidenode for Lattice-FPGA
-
-Install Quartus Prime
-(Linux Download -> https://www.altera.com/downloads/fpga-development-tools/quartus-prime-lite-edition-design-software-version-25-1-linux)
-
-<img width="1105" height="835" alt="grafik" src="https://github.com/user-attachments/assets/2a3c3d20-439e-4523-bf79-9838167ad527" />
-
-
-As AES50 is based on common 100MBit/s ethernet, we started playing around with audio-over-IP and audio-over-ethernet next to AES50. So there are two project-files for the Lattice FPGA at the moment:
-* fpga\lattice\QuartusPrime\openx32_aes50.qpf
-* fpga\lattice\QuartusPrime\openx32_audio_over_ethernet.qpf
-
-The first project is the regular one using the AES50 implementation of Markus Noll. The second is a first try on implementing the Allen&Heath ACE-Link-protocol right at AES50-PortA as well as a regular UDP-sender so that you can receive audio directly via ethernet from the X32.
-
-As the Lattice Diamond Software has no graphical editor, the toolchain looks like this:
-1. open Quartus Prime Lite in version 24.1 or newer
-2. open the project file fpga\lattice\QuartusPrime\openx32_xxxx.qpf
-3. open the main-schematic -> File -> Export as VHDL -> fpga\main_lattice.vhd
-4. open this file and make sure that the entity is called "main_lattice"
-5. open Lattice Diamond, open the project fpga\lattice\openx32.ldf and create the new bitstream-file in the "Process"-tab
-
 
 ### Step 4: Compiling code for the SHARC DSPs
 
