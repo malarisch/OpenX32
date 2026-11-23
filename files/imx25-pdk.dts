@@ -4,6 +4,7 @@
 
 /dts-v1/;
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/sound/fsl-imx-audmux.h>
 #include "imx25.dtsi"
@@ -306,7 +307,7 @@ leds {
 				MX25_PAD_CSI_D4__CSPI3_SCLK	0x1		// FPGA SPI SCLK
 				MX25_PAD_CSI_D3__CSPI3_MISO	0x1		// FPGA SPI MISO
 				MX25_PAD_CSI_D6__GPIO_1_31	0x1			// FPGA nCS0 (GPIO chip select)
-				MX25_PAD_CSI_D7__GPIO_1_6	0x1			// FPGA nCS1
+				MX25_PAD_CSI_D7__GPIO_1_6	0xe0		// FPGA nCS1 pin: interrupt request of the FPGA (input, 100k pull-up)
 			>;
 		};
 
@@ -483,10 +484,9 @@ leds {
 	//       OpenAudioFPGA (LiteX SPIBone). A GPIO chip select: SPIBone needs nCS0 low
 	//       for a whole transaction, the native SS of the i.MX25 CSPI is negated
 	//       between the bursts of a message.
-	// CS1 = FPGA nCS1 (CSI_D7 / GPIO1_6; ECP5 U18, Spartan-3A P15/LDC0): wired on both
-	//       FPGA boards, not used by the gateware (free for a later device).
-	cs-gpios = <&gpio1 31 GPIO_ACTIVE_LOW>, <&gpio1 6 GPIO_ACTIVE_LOW>;
-	num-cs = <2>;
+	// The "official" CS1 is used as a interrupt line
+	cs-gpios = <&gpio1 31 GPIO_ACTIVE_LOW>;
+	num-cs = <1>;
 
 	// The spibone bus driver owns CS0: Wishbone access (/dev/spibone0), raw SPI
 	// messages to configure the FPGA (OMC), and the client devices of the child
@@ -503,12 +503,14 @@ leds {
 		#size-cells = <1>;
 
 		// AES67 core of OpenAudioFPGA (aes67_eth driver: netdev + PTP hardware
-		// clock). Window of the aes67_bridge csr.csv. No RX interrupt line -> polled.
+		// clock). Window of the aes67_bridge csr.csv.
 		// Created whenever the bus goes online; on a gateware without AES67 core the
 		// driver refuses to bind (scratch read-back of its CSR map fails).
 		aes67@90000000 {
 			compatible = "aes67,eth";
 			reg = <0x90000000 0x20000>;
+			interrupt-parent = <&gpio1>;
+			interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
 		};
 	};
 };
